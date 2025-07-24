@@ -216,78 +216,72 @@ int ObThaiFTParser::tokenize_text()
   
   pthread_mutex_lock(&python_mutex_);
   
-  try {
-    PyGILState_STATE gstate = PyGILState_Ensure();
-    
-    // 创建Python字符串
-    PyObject* pText = PyUnicode_FromStringAndSize(start_, (Py_ssize_t)(end_ - start_));
-    if (!pText) {
-      PyGILState_Release(gstate);
-      pthread_mutex_unlock(&python_mutex_);
-      return OBP_PLUGIN_ERROR;
-    }
-    
-    // 调用split函数
-    PyObject* pArgs = PyTuple_Pack(1, pText);
-    PyObject* pResult = PyObject_CallObject((PyObject*)pSplitFunc_, pArgs);
-    
-    Py_DECREF(pText);
-    Py_DECREF(pArgs);
-    
-    if (!pResult) {
-      PyGILState_Release(gstate);
-      pthread_mutex_unlock(&python_mutex_);
-      return OBP_PLUGIN_ERROR;
-    }
-    
-    // 解析结果
-    if (!PyList_Check(pResult)) {
-      Py_DECREF(pResult);
-      PyGILState_Release(gstate);
-      pthread_mutex_unlock(&python_mutex_);
-      return OBP_PLUGIN_ERROR;
-    }
-    
-    Py_ssize_t size = PyList_Size(pResult);
-    token_count_ = (int)size;
-    
-    // 分配内存
-    tokens_ = (char**)malloc(size * sizeof(char*));
-    if (!tokens_) {
-      Py_DECREF(pResult);
-      PyGILState_Release(gstate);
-      pthread_mutex_unlock(&python_mutex_);
-      return OBP_PLUGIN_ERROR;
-    }
-    
-    for (Py_ssize_t i = 0; i < size; i++) {
-      PyObject* pItem = PyList_GetItem(pResult, i);
-      if (PyUnicode_Check(pItem)) {
-        const char* str = PyUnicode_AsUTF8(pItem);
-        if (str) {
-          int len = strlen(str);
-          tokens_[i] = (char*)malloc(len + 1);
-          if (tokens_[i]) {
-            strcpy(tokens_[i], str);
-          }
-        } else {
-          tokens_[i] = nullptr;
-        }
-      } else {
-        tokens_[i] = nullptr;
-      }
-    }
-    
-    Py_DECREF(pResult);
+  PyGILState_STATE gstate = PyGILState_Ensure();
+  
+  // 创建Python字符串
+  PyObject* pText = PyUnicode_FromStringAndSize(start_, (Py_ssize_t)(end_ - start_));
+  if (!pText) {
     PyGILState_Release(gstate);
-    pthread_mutex_unlock(&python_mutex_);
-    return OBP_SUCCESS;
-    
-  } catch (const std::exception& e) {
-    OBP_LOG_WARN("Tokenization failed: %s", e.what());
     pthread_mutex_unlock(&python_mutex_);
     return OBP_PLUGIN_ERROR;
   }
+  
+  // 调用split函数
+  PyObject* pArgs = PyTuple_Pack(1, pText);
+  PyObject* pResult = PyObject_CallObject((PyObject*)pSplitFunc_, pArgs);
+  
+  Py_DECREF(pText);
+  Py_DECREF(pArgs);
+  
+  if (!pResult) {
+    PyGILState_Release(gstate);
+    pthread_mutex_unlock(&python_mutex_);
+    return OBP_PLUGIN_ERROR;
+  }
+  
+  // 解析结果
+  if (!PyList_Check(pResult)) {
+    Py_DECREF(pResult);
+    PyGILState_Release(gstate);
+    pthread_mutex_unlock(&python_mutex_);
+    return OBP_PLUGIN_ERROR;
+  }
+  
+  Py_ssize_t size = PyList_Size(pResult);
+  token_count_ = (int)size;
+  
+  // 分配内存
+  tokens_ = (char**)malloc(size * sizeof(char*));
+  if (!tokens_) {
+    Py_DECREF(pResult);
+    PyGILState_Release(gstate);
+    pthread_mutex_unlock(&python_mutex_);
+    return OBP_PLUGIN_ERROR;
+  }
+  
+  // 初始化tokens数组
+  for (Py_ssize_t i = 0; i < size; i++) {
+    tokens_[i] = nullptr;
+  }
+  
+  for (Py_ssize_t i = 0; i < size; i++) {
+    PyObject* pItem = PyList_GetItem(pResult, i);
+    if (PyUnicode_Check(pItem)) {
+      const char* str = PyUnicode_AsUTF8(pItem);
+      if (str) {
+        int len = strlen(str);
+        tokens_[i] = (char*)malloc(len + 1);
+        if (tokens_[i]) {
+          strcpy(tokens_[i], str);
+        }
+      }
+    }
+  }
+  
+  Py_DECREF(pResult);
+  PyGILState_Release(gstate);
+  pthread_mutex_unlock(&python_mutex_);
+  return OBP_SUCCESS;
 }
 
 int ObThaiFTParser::tokenize_with_spaces()
@@ -363,10 +357,26 @@ int ObThaiFTParser::tokenize_with_spaces()
 
 int ObThaiFTParser::is_thai_text(const char* text, int64_t len)
 {
+  // 更准确的泰语字符检测
   for (int64_t i = 0; i < len; i++) {
     unsigned char c = (unsigned char)text[i];
-    if (c >= 0xE0 && c <= 0xFF) {
-      return 1;
+    // 检查UTF-8泰语字符范围
+    if (c >= 0xE0 && c <= 0xEF) {
+      // 多字节UTF-8字符
+      if (i + 2 < len) {
+        unsigned char c2 = (unsigned char)text[i + 1];
+        unsigned char c3 = (unsigned char)text[i + 2];
+        // 泰语字符的UTF-8范围：0xE0 0xB8 0x80 - 0xE0 0xBB 0xBF
+        if (c == 0xE0 && c2 >= 0xB8 && c2 <= 0xBB) {
+          if ((c2 == 0xB8 && c3 >= 0x80) || 
+              (c2 == 0xB9 && c3 >= 0x80) || 
+              (c2 == 0xBA && c3 >= 0x80) || 
+              (c2 == 0xBB && c3 <= 0xBF)) {
+            return 1;
+          }
+        }
+        i += 2; // 跳过后续字节
+      }
     }
   }
   return 0;
@@ -414,7 +424,11 @@ int ObThaiFTParser::get_next_token(
     OBP_LOG_WARN("thai ft parser isn't initialized. ret=%d, is_inited=%d", ret, is_inited_);
   } else if (tokens_ && current_token_index_ < token_count_) {
     // 使用Python分词结果
-    if (tokens_[current_token_index_]) {
+    while (current_token_index_ < token_count_ && !tokens_[current_token_index_]) {
+      current_token_index_++; // 跳过nullptr的token
+    }
+    
+    if (current_token_index_ < token_count_ && tokens_[current_token_index_]) {
       word = tokens_[current_token_index_];
       word_len = strlen(tokens_[current_token_index_]);
       char_len = word_len;
