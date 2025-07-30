@@ -1,7 +1,7 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.22)
 
 # Thai tokenizer plugin
-SET(PLUGIN_NAME thai_tokenizer)
+SET(PLUGIN_NAME thai_ftparser)
 
 # TODO The list below are your implementention files
 SET(SOURCES
@@ -13,8 +13,8 @@ PROJECT(${PLUGIN_NAME}
         HOMEPAGE_URL "https://open.oceanbase.com/"
         LANGUAGES CXX C ASM)
 
-# 查找Python3开发包
-find_package(Python3 COMPONENTS Development REQUIRED)
+# 查找Python3.12开发包进行测试
+find_package(Python3 3.12 EXACT COMPONENTS Development REQUIRED)
 
 # Don't touch me
 FIND_PACKAGE(ObPlugin REQUIRED)

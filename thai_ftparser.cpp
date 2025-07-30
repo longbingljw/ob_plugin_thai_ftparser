@@ -126,11 +126,18 @@ int ObThaiFTParser::init(ObPluginFTParserParamPtr param)
     
     // 检查是否为泰语文本
     if (is_thai_text(fulltext, ft_length)) {
+      OBP_LOG_INFO("Detected Thai text, initializing Python tokenizer");
       ret = initialize_python();
       if (ret == OBP_SUCCESS) {
+        OBP_LOG_INFO("Python initialized successfully, tokenizing text");
         ret = tokenize_text();
+      } else {
+        // Python初始化失败，使用空格分词作为回退
+        OBP_LOG_WARN("Python initialization failed, falling back to space tokenization");
+        ret = tokenize_with_spaces();
       }
     } else {
+      OBP_LOG_INFO("Non-Thai text detected, using space tokenization");
       ret = tokenize_with_spaces();
     }
   }
@@ -173,7 +180,7 @@ int ObThaiFTParser::initialize_python()
       return OBP_PLUGIN_ERROR;
     }
     
-    // 创建Tokenizer实例
+    // 创建Tokenizer实例（Python 3.12版本不需要参数）
     PyObject* pTokenizer = PyObject_CallObject(pTokenizerClass, nullptr);
     if (!pTokenizer) {
       OBP_LOG_WARN("Failed to create Tokenizer instance");
@@ -267,12 +274,16 @@ int ObThaiFTParser::tokenize_text()
   for (Py_ssize_t i = 0; i < size; i++) {
     PyObject* pItem = PyList_GetItem(pResult, i);
     if (PyUnicode_Check(pItem)) {
-      const char* str = PyUnicode_AsUTF8(pItem);
+      // 使用PyUnicode_AsUTF8AndSize更兼容Python 3.6
+      Py_ssize_t str_len;
+      const char* str = PyUnicode_AsUTF8AndSize(pItem, &str_len);
       if (str) {
-        int len = strlen(str);
-        tokens_[i] = (char*)malloc(len + 1);
+        tokens_[i] = (char*)malloc(str_len + 1);
         if (tokens_[i]) {
-          strcpy(tokens_[i], str);
+          memcpy(tokens_[i], str, str_len);
+          tokens_[i][str_len] = '\0';
+          // 添加调试日志
+          OBP_LOG_INFO("Token[%d]: '%s' (len=%d)", (int)i, tokens_[i], (int)str_len);
         }
       }
     }
@@ -433,6 +444,8 @@ int ObThaiFTParser::get_next_token(
       word_len = strlen(tokens_[current_token_index_]);
       char_len = word_len;
       word_freq = 1;
+      // 添加调试日志
+      OBP_LOG_INFO("Returning token[%d]: '%s' (len=%d)", current_token_index_, word, (int)word_len);
       current_token_index_++;
     } else {
       ret = OBP_ITER_END;
