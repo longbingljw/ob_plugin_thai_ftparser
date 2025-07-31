@@ -13,8 +13,8 @@ PROJECT(${PLUGIN_NAME}
         HOMEPAGE_URL "https://open.oceanbase.com/"
         LANGUAGES CXX C ASM)
 
-# 查找Python3.12开发包进行测试
-find_package(Python3 3.12 EXACT COMPONENTS Development REQUIRED)
+# 查找Python3.10开发包
+find_package(Python3 3.10 EXACT COMPONENTS Development REQUIRED)
 
 # Don't touch me
 FIND_PACKAGE(ObPlugin REQUIRED)

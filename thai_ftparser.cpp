@@ -180,7 +180,7 @@ int ObThaiFTParser::initialize_python()
       return OBP_PLUGIN_ERROR;
     }
     
-    // 创建Tokenizer实例（Python 3.12版本不需要参数）
+    // 创建Tokenizer实例（Python 3.10版本不需要参数）
     PyObject* pTokenizer = PyObject_CallObject(pTokenizerClass, nullptr);
     if (!pTokenizer) {
       OBP_LOG_WARN("Failed to create Tokenizer instance");
